@@ -66,18 +66,6 @@ h1, h2, .sidebar-brand, .login-brand, .mobile-brand { font-family: 'Manrope', sa
 .terms { color: #8a93a6; font-size: 12px; line-height: 1.55; text-align: center; margin: 26px auto 0; max-width: 340px; }
 .inline-error, .result-message { border-radius: 9px; padding: 11px 13px; margin-top: 12px; color: #a73946; background: #fff0f2; border: 1px solid #ffd4da; font-size: 14px; }
 
-/* Onboarding */
-.onboarding-shell { min-height: 100vh; display: grid; place-items: center; padding: 42px 20px; background: radial-gradient(circle at 50% 0%, #e8eeff 0, #f6f8fc 42%, #f3f6fb 100%); }
-.onboarding-card { width: min(650px, 100%); background: white; border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); padding: clamp(28px, 5vw, 54px); text-align: center; }
-.success-orb { width: 62px; height: 62px; border-radius: 19px; display: grid; place-items: center; margin: 0 auto 22px; color: white; background: linear-gradient(145deg, #27b383, #10825d); box-shadow: 0 10px 25px rgba(21,143,101,.22); }
-.onboarding-card h1 { font-size: 38px; letter-spacing: -.04em; margin: 10px 0 8px; }
-.onboarding-lead { color: var(--muted); line-height: 1.65; }
-.instruction-list { margin: 30px 0; display: grid; gap: 10px; text-align: left; }
-.instruction-item { display: flex; gap: 15px; align-items: flex-start; padding: 15px; border-radius: 12px; background: #f7f9fd; }
-.instruction-number { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--blue); background: #e8edff; font-weight: 800; }
-.instruction-item strong { display: block; margin-bottom: 3px; }
-.instruction-item p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
-
 /* App shell */
 .app-shell { min-height: 100vh; display: flex; }
 .sidebar { position: fixed; inset: 0 auto 0 0; width: 250px; z-index: 30; display: flex; flex-direction: column; padding: 26px 18px 20px; background: var(--navy); color: white; }
@@ -128,6 +116,10 @@ h1, h2, .sidebar-brand, .login-brand, .mobile-brand { font-family: 'Manrope', sa
 .empty-state p { color: var(--muted); font-size: 13px; margin: 5px 0 15px; }
 .record-list { padding-top: 8px; }
 .record-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 14px 4px; border-bottom: 1px solid #edf0f5; }
+.record-button { width: 100%; border: 0; background: transparent; color: inherit; text-align: left; }
+.record-button:hover { background: #f8faff; }
+.record-copy { display: grid; gap: 3px; }
+.history-link { margin: 8px auto 0; display: flex; }
 .record-icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; color: var(--blue); background: var(--blue-pale); }
 .record-icon svg { width: 17px; }
 .record-icon.purple { color: var(--purple); background: #f0ecff; }
@@ -137,6 +129,61 @@ h1, h2, .sidebar-brand, .login-brand, .mobile-brand { font-family: 'Manrope', sa
 .status { border-radius: 999px; padding: 5px 8px; font-size: 11px; }
 .status.sent { color: var(--green); background: var(--green-pale); }
 .status.scheduled { color: var(--purple); background: #f0ecff; }
+
+/* Email history */
+.history-error { margin: 0 0 16px; }
+.history-shell { display: grid; grid-template-columns: 280px 330px minmax(360px, 1fr); min-height: 650px; background: white; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
+.campaign-browser, .recipient-browser { min-width: 0; border-right: 1px solid var(--line); }
+.history-section-title { min-height: 74px; padding: 17px 18px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); }
+.history-section-title > div { display: grid; gap: 3px; min-width: 0; }
+.history-section-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-section-title span { color: var(--muted); font-size: 12px; }
+.history-section-title > svg { color: #8c97aa; }
+.campaign-list { max-height: 574px; overflow-y: auto; }
+.campaign-list button, .history-recipient-list button { width: 100%; border: 0; border-bottom: 1px solid #edf0f5; background: white; color: inherit; text-align: left; }
+.campaign-list button { padding: 14px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; }
+.campaign-list button:hover, .campaign-list button.selected, .history-recipient-list button:hover, .history-recipient-list button.selected { background: #f3f6ff; }
+.campaign-list button.selected { box-shadow: inset 3px 0 var(--blue); }
+.campaign-list-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; color: var(--blue); background: var(--blue-pale); }
+.campaign-list-icon svg { width: 16px; }
+.campaign-list button > span:nth-child(2) { min-width: 0; display: grid; gap: 4px; }
+.campaign-list button strong, .campaign-list button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.campaign-list button strong { font-size: 13px; }
+.campaign-list button small { color: var(--muted); font-size: 11px; }
+.campaign-list button > b { grid-column: 2; justify-self: start; color: var(--blue); font-size: 10px; font-weight: 700; text-transform: capitalize; }
+.history-search { margin: 12px; padding: 0 11px; min-height: 42px; display: flex; align-items: center; gap: 8px; border: 1px solid #ccd4e0; border-radius: 10px; color: #8c97aa; }
+.history-search:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px #e4e9ff; }
+.history-search input { min-width: 0; width: 100%; border: 0; outline: 0; color: var(--ink); background: transparent; }
+.history-recipient-list { max-height: 505px; overflow-y: auto; }
+.history-recipient-list button { padding: 11px 13px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; }
+.history-recipient-list button > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+.history-recipient-list strong, .history-recipient-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-recipient-list strong { font-size: 12px; }
+.history-recipient-list small { color: var(--muted); font-size: 11px; }
+.delivery-status { border-radius: 999px; padding: 5px 8px; color: #59657a; background: #eef1f5; font-size: 10px; text-transform: capitalize; white-space: nowrap; }
+.delivery-status.sent { color: var(--green); background: var(--green-pale); }
+.delivery-status.failed { color: #a73946; background: #fff0f2; }
+.delivery-status.queued, .delivery-status.sending { color: var(--purple); background: #f0ecff; }
+.history-placeholder { padding: 28px 18px; color: var(--muted); font-size: 13px; text-align: center; }
+.gmail-record { min-width: 0; padding: 24px; overflow-y: auto; }
+.gmail-record-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.gmail-record-header h2 { margin: 5px 0 3px; font-size: 22px; }
+.gmail-record-header p { margin: 0; color: var(--muted); font-size: 13px; }
+.gmail-metadata { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 18px 0; }
+.gmail-metadata > div { padding: 11px; border-radius: 9px; background: #f6f8fb; }
+.gmail-metadata .wide { grid-column: 1 / -1; }
+.gmail-metadata dt { color: var(--muted); font-size: 11px; }
+.gmail-metadata dd { margin: 4px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+.gmail-message { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.gmail-message > div { padding: 11px 15px; display: grid; grid-template-columns: 62px 1fr; gap: 8px; border-bottom: 1px solid #edf0f5; font-size: 13px; }
+.gmail-message > div span { color: var(--muted); }
+.gmail-message > p { min-height: 180px; margin: 0; padding: 18px; white-space: pre-wrap; color: #33405a; font-size: 13px; line-height: 1.7; }
+.merge-data { margin-top: 18px; }
+.merge-data > strong { font-size: 13px; }
+.merge-data > div { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 7px; }
+.merge-data span { padding: 6px 8px; border-radius: 7px; background: #f2f5f9; color: var(--muted); font-size: 11px; }
+.merge-data span b { margin-right: 5px; color: var(--ink); }
+.gmail-empty { min-height: 550px; }
 
 /* Email flow */
 .stepper { list-style: none; display: flex; align-items: center; margin: 0 0 22px; padding: 0; overflow-x: auto; }
@@ -253,6 +300,8 @@ h1, h2, .sidebar-brand, .login-brand, .mobile-brand { font-family: 'Manrope', sa
   .app-main { margin-left: 0; }
   .page-content { width: min(100% - 36px, 900px); padding-top: 80px; }
   .dashboard-grid, .composer-grid { grid-template-columns: 1fr; }
+  .history-shell { grid-template-columns: 260px 1fr; }
+  .gmail-record { grid-column: 1 / -1; border-top: 1px solid var(--line); }
   .live-preview { border-left: 0; border-top: 1px solid var(--line); }
   .stat-grid { grid-template-columns: 1fr; }
 }
@@ -272,7 +321,9 @@ h1, h2, .sidebar-brand, .login-brand, .mobile-brand { font-family: 'Manrope', sa
   .workspace-footer { padding: 14px; }
   .workspace-footer button { padding-inline: 11px; }
   .dashboard-grid { grid-template-columns: 1fr; }
+  .history-shell { display: block; }
+  .campaign-browser, .recipient-browser { border-right: 0; border-bottom: 1px solid var(--line); }
+  .campaign-list, .history-recipient-list { max-height: 330px; }
   .panel { padding: 17px; }
   .login-panel { padding: 26px; }
-  .onboarding-card h1 { font-size: 31px; }
 }

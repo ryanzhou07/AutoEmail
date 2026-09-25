@@ -11,6 +11,7 @@ import {
   Download,
   FileSpreadsheet,
   Gauge,
+  History,
   LogOut,
   Mail,
   Menu,
@@ -22,9 +23,13 @@ import {
 } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { saveEmailCampaign } from './emailHistory';
+import type { DeliveryResult } from './emailHistory';
+import { EmailHistory } from './HistoryScreen';
+import { apiUrl, responseError } from './api';
 import { isSupabaseConfigured, supabase } from './supabase';
 
-type View = 'dashboard' | 'emails';
+type View = 'dashboard' | 'emails' | 'history';
 type SendMode = 'now' | 'later';
 type Recipient = Record<string, string>;
 
@@ -32,17 +37,50 @@ type CampaignRecord = {
   id: string;
   subject: string;
   recipients: number;
-  status: 'Sent' | 'Scheduled';
+  status: 'Sent' | 'Partially sent' | 'Failed' | 'Scheduled';
   date: string;
+};
+
+type CampaignApiRecord = {
+  id: string;
+  subject_template: string;
+  status: 'draft' | 'scheduled' | 'sending' | 'completed' | 'completed_with_errors' | 'cancelled' | 'failed';
+  scheduled_at: string | null;
+  total_count: number;
+  sent_count: number;
+  created_at: string;
+  completed_at: string | null;
 };
 
 const steps = ['Template', 'Upload', 'Write', 'Preview', 'Send'];
 const emailPattern = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const templatePattern = /{\s*([a-zA-Z_]\w*)\s*}/g;
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL?.trim() || '/api').replace(/\/$/, '');
+async function retrieveEmailHistory(accessToken: string): Promise<CampaignRecord[]> {
+  const response = await fetch(apiUrl('/email-history/campaigns?limit=100'), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    throw await responseError(response, 'Could not load email history.');
+  }
 
-function apiUrl(path: string) {
-  return `${apiBaseUrl}${path}`;
+  const body = await response.json() as { items: CampaignApiRecord[] };
+  return body.items
+    .filter((item) => !['draft', 'sending', 'cancelled'].includes(item.status))
+    .map((item) => ({
+      id: item.id,
+      subject: item.subject_template,
+      recipients: item.status === 'scheduled' ? item.total_count : item.sent_count,
+      status: item.status === 'scheduled'
+        ? 'Scheduled'
+        : item.status === 'completed_with_errors'
+          ? 'Partially sent'
+          : item.status === 'failed'
+            ? 'Failed'
+            : 'Sent',
+      date: new Date(
+        item.scheduled_at || item.completed_at || item.created_at,
+      ).toLocaleString(),
+    }));
 }
 
 const sampleRecipients: Recipient[] = [
@@ -199,37 +237,6 @@ function Login({ onDemo }: { onDemo: () => void }) {
   );
 }
 
-function Onboarding({ onContinue, email }: { onContinue: () => void; email: string }) {
-  const items = [
-    ['Download a template', 'Start with the right columns for names, emails, and custom details.'],
-    ['Upload your CSV', 'We check addresses and match your columns to email variables.'],
-    ['Write and preview', 'Personalize once, then review exactly what each person will receive.'],
-    ['Send or schedule', 'Confirm your audience and choose now or a specific time.'],
-  ];
-
-  return (
-    <main className="onboarding-shell">
-      <div className="onboarding-card">
-        <div className="success-orb"><Check size={28} /></div>
-        <span className="eyebrow">GOOGLE ACCOUNT CONNECTED</span>
-        <h1>You’re ready to send</h1>
-        <p className="onboarding-lead">Signed in as {email}. Supabase authenticated your account and Google granted Gmail send-only access.</p>
-        <div className="instruction-list">
-          {items.map(([title, detail], index) => (
-            <div className="instruction-item" key={title}>
-              <span className="instruction-number">{index + 1}</span>
-              <div><strong>{title}</strong><p>{detail}</p></div>
-            </div>
-          ))}
-        </div>
-        <button className="primary-button large" onClick={onContinue}>
-          Create my first email <ArrowRight size={18} />
-        </button>
-      </div>
-    </main>
-  );
-}
-
 function Sidebar({ view, setView, onLogout, email }: { view: View; setView: (view: View) => void; onLogout: () => void; email: string }) {
   const [open, setOpen] = useState(false);
   const initials = email.slice(0, 2).toUpperCase();
@@ -242,6 +249,7 @@ function Sidebar({ view, setView, onLogout, email }: { view: View; setView: (vie
         <nav>
           <button className={view === 'dashboard' ? 'active' : ''} onClick={() => { setView('dashboard'); setOpen(false); }}><Gauge />Dashboard</button>
           <button className={view === 'emails' ? 'active' : ''} onClick={() => { setView('emails'); setOpen(false); }}><Mail />Emails</button>
+          <button className={view === 'history' ? 'active' : ''} onClick={() => { setView('history'); setOpen(false); }}><History />Email history</button>
         </nav>
         <div className="sidebar-bottom">
           <div className="connected-user"><div className="avatar">{initials}</div><div><strong>{email}</strong><span>Supabase + Gmail connected</span></div></div>
@@ -252,7 +260,7 @@ function Sidebar({ view, setView, onLogout, email }: { view: View; setView: (vie
   );
 }
 
-function Dashboard({ history, scheduled, goToEmails }: { history: CampaignRecord[]; scheduled: CampaignRecord[]; goToEmails: () => void }) {
+function Dashboard({ history, scheduled, loading, error, goToEmails, openHistory }: { history: CampaignRecord[]; scheduled: CampaignRecord[]; loading: boolean; error: string; goToEmails: () => void; openHistory: (campaignId?: string) => void }) {
   return (
     <section className="page-content dashboard-page">
       <header className="page-header">
@@ -266,8 +274,9 @@ function Dashboard({ history, scheduled, goToEmails }: { history: CampaignRecord
       </div>
       <div className="dashboard-grid">
         <article className="panel">
-          <div className="panel-heading"><div><h2>Email history</h2><p>Completed sends will be stored here later.</p></div><BarChart3 /></div>
-          {history.length ? <div className="record-list">{history.map((item) => <div className="record-row" key={item.id}><span className="record-icon"><Mail /></span><div><strong>{item.subject}</strong><span>{item.recipients} recipients · {item.date}</span></div><b className="status sent">Sent</b></div>)}</div> : <EmptyState icon={<Mail />} title="No emails sent yet" detail="Your completed campaigns will appear here." action="Create an email" onAction={goToEmails} />}
+          <div className="panel-heading"><div><h2>Email history</h2><p>Completed sends saved in Supabase.</p></div><BarChart3 /></div>
+          {error && <div className="inline-error">{error}</div>}
+          {loading ? <div className="empty-state"><span><Mail /></span><strong>Loading email history…</strong></div> : history.length ? <div className="record-list">{history.map((item) => <button className="record-row record-button" key={item.id} onClick={() => openHistory(item.id)}><span className="record-icon"><Mail /></span><span className="record-copy"><strong>{item.subject}</strong><span>{item.recipients} recipients · {item.date}</span></span><b className="status sent">{item.status}</b></button>)}<button className="text-button history-link" onClick={() => openHistory()}>View all email history</button></div> : <EmptyState icon={<Mail />} title="No emails sent yet" detail="Your completed campaigns will appear here." action="Create an email" onAction={goToEmails} />}
         </article>
         <article className="panel">
           <div className="panel-heading"><div><h2>Scheduled emails</h2><p>Upcoming sends, ready for the scheduling backend.</p></div><Clock3 /></div>
@@ -298,7 +307,7 @@ function Stepper({ current, setStep }: { current: number; setStep: (step: number
   );
 }
 
-function EmailWorkspace({ demoMode, accessToken, providerToken, senderEmail, onSent, onScheduled }: { demoMode: boolean; accessToken: string | null; providerToken: string | null; senderEmail: string; onSent: (record: CampaignRecord) => void; onScheduled: (record: CampaignRecord) => void }) {
+function EmailWorkspace({ demoMode, accessToken, providerToken, userId, senderEmail, onSent, onScheduled }: { demoMode: boolean; accessToken: string | null; providerToken: string | null; userId: string | null; senderEmail: string; onSent: (record: CampaignRecord) => void; onScheduled: (record: CampaignRecord) => void }) {
   const [step, setStep] = useState(0);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [fileName, setFileName] = useState('');
@@ -363,19 +372,48 @@ function EmailWorkspace({ demoMode, accessToken, providerToken, senderEmail, onS
   async function finishCampaign() {
     if (sendMode === 'later') {
       if (!scheduledAt) { setMessage('Choose a date and time.'); return; }
-      onScheduled({ id: crypto.randomUUID(), subject, recipients: recipients.length, status: 'Scheduled', date: new Date(scheduledAt).toLocaleString() });
-      setMessage('Scheduled email saved to your dashboard.');
+      setSending(true);
+      try {
+        const scheduledDate = new Date(scheduledAt);
+        const deliveries: DeliveryResult[] = recipients.map((recipient) => ({
+          recipient,
+          renderedSubject: renderTemplate(subject, recipient),
+          renderedBody: renderTemplate(body, recipient),
+          status: 'queued',
+        }));
+        const id = demoMode
+          ? crypto.randomUUID()
+          : await saveEmailCampaign({
+              userId: userId!,
+              senderEmail,
+              subjectTemplate: subject,
+              bodyTemplate: body,
+              status: 'scheduled',
+              scheduledAt: scheduledDate.toISOString(),
+              deliveries,
+            });
+        onScheduled({ id, subject, recipients: recipients.length, status: 'Scheduled', date: scheduledDate.toLocaleString() });
+        setMessage('Scheduled email saved to your dashboard.');
+      } catch (caught) {
+        setMessage(caught instanceof Error ? caught.message : 'The schedule could not be saved.');
+      } finally {
+        setSending(false);
+      }
       return;
     }
 
     setSending(true);
     setMessage('');
+    const startedAt = new Date().toISOString();
+    const deliveries: DeliveryResult[] = [];
     try {
       if (!demoMode) {
-        if (!accessToken || !providerToken) {
+        if (!accessToken || !providerToken || !userId) {
           throw new Error('Your Supabase or Google session is unavailable. Sign out and reconnect Google.');
         }
         for (const row of recipients) {
+          const renderedSubject = renderTemplate(subject, row);
+          const renderedBody = renderTemplate(body, row);
           const response = await fetch(apiUrl('/gmail/messages'), {
             method: 'POST',
             headers: {
@@ -385,24 +423,76 @@ function EmailWorkspace({ demoMode, accessToken, providerToken, senderEmail, onS
             },
             body: JSON.stringify({
               to: row.email,
-              subject: renderTemplate(subject, row),
-              body: renderTemplate(body, row),
+              subject: renderedSubject,
+              body: renderedBody,
             }),
           });
           if (!response.ok) {
             const detail = await response.json().catch(() => null) as
               | { detail?: string }
               | null;
-            throw new Error(detail?.detail || `Gmail could not send to ${row.email}.`);
+            deliveries.push({
+              recipient: row,
+              renderedSubject,
+              renderedBody,
+              status: 'failed',
+              errorMessage: detail?.detail || `Gmail could not send to ${row.email}.`,
+            });
+            continue;
           }
+          const result = await response.json() as { id: string };
+          deliveries.push({
+            recipient: row,
+            renderedSubject,
+            renderedBody,
+            status: 'sent',
+            gmailMessageId: result.id,
+            sentAt: new Date().toISOString(),
+          });
         }
       } else {
         await new Promise((resolve) => window.setTimeout(resolve, 650));
+        deliveries.push(...recipients.map((recipient) => ({
+          recipient,
+          renderedSubject: renderTemplate(subject, recipient),
+          renderedBody: renderTemplate(body, recipient),
+          status: 'sent' as const,
+          sentAt: new Date().toISOString(),
+        })));
       }
-      onSent({ id: crypto.randomUUID(), subject, recipients: recipients.length, status: 'Sent', date: new Date().toLocaleString() });
-      setMessage(demoMode ? 'Demo complete. No real emails were sent.' : `Successfully sent ${recipients.length} email${recipients.length === 1 ? '' : 's'}.`);
+      const sentCount = deliveries.filter((item) => item.status === 'sent').length;
+      const failedCount = deliveries.length - sentCount;
+      const completedAt = new Date().toISOString();
+      const campaignStatus = failedCount
+        ? sentCount ? 'completed_with_errors' : 'failed'
+        : 'completed';
+      const id = demoMode
+        ? crypto.randomUUID()
+        : await saveEmailCampaign({
+            userId: userId!,
+            senderEmail,
+            subjectTemplate: subject,
+            bodyTemplate: body,
+            status: campaignStatus,
+            deliveries,
+            startedAt,
+            completedAt,
+          });
+      const displayStatus = failedCount
+        ? sentCount ? 'Partially sent' : 'Failed'
+        : 'Sent';
+      onSent({ id, subject, recipients: sentCount, status: displayStatus, date: new Date(completedAt).toLocaleString() });
+      setMessage(
+        demoMode
+          ? 'Demo complete. No real emails were sent.'
+          : failedCount
+            ? `Sent ${sentCount}; ${failedCount} failed. Results were saved to email history.`
+            : `Successfully sent and saved ${sentCount} email${sentCount === 1 ? '' : 's'}.`,
+      );
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : 'The send could not be completed.');
+      const detail = caught instanceof Error ? caught.message : 'The send could not be completed.';
+      const sentCount = deliveries.filter((item) => item.status === 'sent').length;
+      setMessage(sentCount ? `${sentCount} email${sentCount === 1 ? '' : 's'} sent, but history could not be saved: ${detail}` : detail);
     } finally {
       setSending(false);
     }
@@ -454,10 +544,12 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [checking, setChecking] = useState(Boolean(supabase));
   const [demoMode, setDemoMode] = useState(false);
-  const [onboarded, setOnboarded] = useState(false);
   const [view, setView] = useState<View>('emails');
   const [history, setHistory] = useState<CampaignRecord[]>([]);
   const [scheduled, setScheduled] = useState<CampaignRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [selectedHistoryCampaignId, setSelectedHistoryCampaignId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supabase) {
@@ -484,28 +576,56 @@ export default function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!session?.access_token || demoMode) return;
+    let active = true;
+    void retrieveEmailHistory(session.access_token)
+      .then((records) => {
+        if (!active) return;
+        setHistoryError('');
+        setHistory(records.filter((record) => record.status !== 'Scheduled'));
+        setScheduled(records.filter((record) => record.status === 'Scheduled'));
+      })
+      .catch((error: unknown) => {
+        if (active) setHistoryError(error instanceof Error ? error.message : 'Could not load email history.');
+      })
+      .finally(() => {
+        if (active) setHistoryLoading(false);
+      });
+    return () => { active = false; };
+  }, [session?.access_token, demoMode]);
+
   async function logout() {
     if (!demoMode && supabase) await supabase.auth.signOut();
     setSession(null);
     setDemoMode(false);
-    setOnboarded(false);
+    setView('emails');
+    setHistory([]);
+    setScheduled([]);
+    setHistoryError('');
   }
 
   if (checking) return <div className="loading-screen"><Logo /><span>Checking Gmail connection…</span></div>;
-  if (!session && !demoMode) return <Login onDemo={() => { setDemoMode(true); setOnboarded(false); }} />;
+  if (!session && !demoMode) return <Login onDemo={() => { setDemoMode(true); setView('emails'); }} />;
 
   const senderEmail = demoMode
     ? 'demo@example.com'
     : session?.user.email || 'Connected Google account';
   const providerToken = session?.provider_token || null;
 
-  if (!onboarded) return <Onboarding onContinue={() => setOnboarded(true)} email={senderEmail} />;
+  function openHistory(campaignId?: string) {
+    setSelectedHistoryCampaignId(campaignId ?? null);
+    setView('history');
+  }
 
   return (
     <div className="app-shell">
       <Sidebar view={view} setView={setView} onLogout={logout} email={senderEmail} />
       <main className="app-main">
-        {view === 'dashboard' ? <Dashboard history={history} scheduled={scheduled} goToEmails={() => setView('emails')} /> : <EmailWorkspace demoMode={demoMode} accessToken={session?.access_token || null} providerToken={providerToken} senderEmail={senderEmail} onSent={(record) => setHistory((items) => [record, ...items])} onScheduled={(record) => setScheduled((items) => [record, ...items])} />}
+        {view === 'dashboard' && <Dashboard history={history} scheduled={scheduled} loading={historyLoading} error={historyError} goToEmails={() => setView('emails')} openHistory={openHistory} />}
+        {view === 'history' && session?.access_token && <EmailHistory accessToken={session.access_token} initialCampaignId={selectedHistoryCampaignId} />}
+        {view === 'history' && demoMode && <section className="page-content"><EmptyState icon={<Mail />} title="History is unavailable in demo mode" detail="Sign in with Google to save and retrieve recipient delivery records." /></section>}
+        {view === 'emails' && <EmailWorkspace demoMode={demoMode} accessToken={session?.access_token || null} providerToken={providerToken} userId={session?.user.id || null} senderEmail={senderEmail} onSent={(record) => setHistory((items) => [record, ...items])} onScheduled={(record) => setScheduled((items) => [record, ...items])} />}
       </main>
     </div>
   );

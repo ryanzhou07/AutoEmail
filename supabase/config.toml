@@ -1,0 +1,39 @@
+# Local identifier only. Link the repository to the hosted project with:
+# npx supabase link --project-ref <your-project-ref>
+project_id = "quick-emailer"
+
+# This project uses the 5532x range so it can run beside another local
+# Supabase project using the default 5432x ports.
+[api]
+enabled = true
+port = 55321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 55322
+shadow_port = 55320
+major_version = 17
+
+[studio]
+enabled = true
+port = 55323
+api_url = "http://127.0.0.1"
+
+[local_smtp]
+enabled = true
+port = 55324
+
+[analytics]
+enabled = true
+port = 55327
+backend = "postgres"
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+]

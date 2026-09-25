@@ -48,11 +48,17 @@ def _bearer_token(authorization: str | None) -> str:
     return token.strip()
 
 
-def get_supabase_user(
+def get_supabase_access_token(
     authorization: str | None = Header(default=None),
+) -> str:
+    """Return the Supabase bearer token supplied by the frontend."""
+    return _bearer_token(authorization)
+
+
+def get_supabase_user(
+    access_token: str = Depends(get_supabase_access_token),
 ) -> SupabaseUser:
     """Verify the bearer token with Supabase Auth and return its user."""
-    access_token = _bearer_token(authorization)
     supabase_url = _required_setting("SUPABASE_URL")
     publishable_key = _required_setting("SUPABASE_PUBLISHABLE_KEY")
 
@@ -85,6 +91,14 @@ def get_supabase_user(
 
     payload: dict[str, Any] = response.json()
     return SupabaseUser(id=payload["id"], email=payload.get("email"))
+
+
+def get_verified_supabase_access_token(
+    access_token: str = Depends(get_supabase_access_token),
+    _: SupabaseUser = Depends(get_supabase_user),
+) -> str:
+    """Return a bearer token only after Supabase has verified its user."""
+    return access_token
 
 
 def get_creds(

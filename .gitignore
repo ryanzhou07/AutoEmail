@@ -27,6 +27,7 @@ node_modules/
 .wrangler/
 .next/
 coverage/
+/supabase/.temp/
 
 # --- AWS CDK ---
 cdk.out/

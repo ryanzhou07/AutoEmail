@@ -22,7 +22,7 @@ Backend:
 cp backend/.env.example backend/.env.local
 ```
 
-Fill in the Supabase project URL and publishable key.
+Fill in the Supabase project URL and publishable key in the same way found in .env.example
 
 Frontend:
 
@@ -30,7 +30,7 @@ Frontend:
 cp frontend/.env.example frontend/.env.local
 ```
 
-Fill in the same public Supabase values. Neither file needs the Google client
+Fill in the same public Supabase value in the same way found in .env.example. Neither file needs the Google client
 secret; that secret belongs in the Supabase Google provider configuration.
 
 ## Run locally
@@ -48,6 +48,43 @@ Gmail.
 
 Local requests use Vite's `/api` proxy to reach FastAPI at
 `http://localhost:8000`. No CORS or production API URL is needed locally.
+
+## Apply database migrations
+
+Database changes live in `supabase/migrations` and are tracked by the Supabase
+CLI. From the repository root, authenticate and link this checkout once:
+
+```bash
+npx supabase login
+npx supabase link --project-ref YOUR_PROJECT_REF
+```
+
+Preview and apply all pending migrations:
+
+```bash
+npx supabase db push --dry-run
+npx supabase db push
+```
+
+`db push` records each applied migration in Supabase, so later runs only apply
+new files. Do not paste these migrations into the Dashboard SQL editor as well,
+or the remote migration history and repository can drift apart.
+
+## Email history API
+
+All history routes require the same `Authorization: Bearer <supabase-jwt>`
+header as the Gmail routes. The API forwards that user JWT to Supabase, so the
+database Row Level Security policies only return records owned by that user.
+
+- `GET /email-history/campaigns` lists campaigns. Optional query parameters:
+  `status`, `limit`, and `offset`.
+- `GET /email-history/campaigns/{campaign_id}` returns one campaign, including
+  its body template.
+- `GET /email-history/campaigns/{campaign_id}/recipients` lists its recipient
+  delivery records. Optional query parameters: `status`, `limit`, and `offset`.
+- `GET /email-history/scheduled` lists scheduled campaigns.
+
+Interactive API documentation is available at `http://localhost:8000/docs`.
 
 ## Future deployment
 
