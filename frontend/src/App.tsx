@@ -53,6 +53,8 @@ type CampaignApiRecord = {
 };
 
 const steps = ['Template', 'Upload', 'Write', 'Preview', 'Send'];
+const MAX_RECIPIENTS = 50;
+const MAX_CSV_BYTES = 5 * 1024 * 1024;
 const emailPattern = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const templatePattern = /{\s*([a-zA-Z_]\w*)\s*}/g;
 async function retrieveEmailHistory(accessToken: string): Promise<CampaignRecord[]> {
@@ -338,7 +340,23 @@ function EmailWorkspace({ demoMode, accessToken, providerToken, userId, senderEm
   async function loadFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    // Reset the input so choosing the same rejected file again still fires onChange.
+    event.target.value = '';
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      setMessage('Choose a CSV file.');
+      return;
+    }
+    if (file.size > MAX_CSV_BYTES) {
+      setMessage('The CSV must be 5 MB or smaller.');
+      return;
+    }
+
     const rows = parseCsv(await file.text());
+    if (rows.length > MAX_RECIPIENTS) {
+      setMessage(`This CSV has ${rows.length} recipients. Upload no more than ${MAX_RECIPIENTS}.`);
+      return;
+    }
     setRecipients(rows);
     setFileName(file.name);
     setPreviewIndex(0);
@@ -357,8 +375,14 @@ function EmailWorkspace({ demoMode, accessToken, providerToken, userId, senderEm
   }
 
   function nextStep() {
-    if (step === 1 && (!recipients.length || invalidCount)) {
-      setMessage(invalidCount ? `${invalidCount} recipient email${invalidCount === 1 ? ' is' : 's are'} invalid.` : 'Upload a CSV before continuing.');
+    if (step === 1 && (!recipients.length || recipients.length > MAX_RECIPIENTS || invalidCount)) {
+      setMessage(
+        recipients.length > MAX_RECIPIENTS
+          ? `Use no more than ${MAX_RECIPIENTS} recipients.`
+          : invalidCount
+            ? `${invalidCount} recipient email${invalidCount === 1 ? ' is' : 's are'} invalid.`
+            : 'Upload a CSV before continuing.',
+      );
       return;
     }
     if (step === 2 && (!subject.trim() || !body.trim() || missing.length)) {
@@ -370,6 +394,11 @@ function EmailWorkspace({ demoMode, accessToken, providerToken, userId, senderEm
   }
 
   async function finishCampaign() {
+    if (!recipients.length || recipients.length > MAX_RECIPIENTS) {
+      setMessage(`A campaign must contain between 1 and ${MAX_RECIPIENTS} recipients.`);
+      return;
+    }
+
     if (sendMode === 'later') {
       if (!scheduledAt) { setMessage('Choose a date and time.'); return; }
       setSending(true);
@@ -524,7 +553,7 @@ function TemplateStep({ downloadTemplate }: { downloadTemplate: () => void }) {
 }
 
 function UploadStep({ recipients, fileName, invalidCount, onBrowse, useSampleData }: { recipients: Recipient[]; fileName: string; invalidCount: number; onBrowse: () => void; useSampleData: () => void }) {
-  return <div className="single-step"><span className="step-kicker">STEP 2 OF 5</span><h2>Upload your recipients</h2><p>Choose the completed CSV. We’ll validate email addresses before you continue.</p><button className={`upload-zone ${recipients.length ? 'loaded' : ''}`} onClick={onBrowse}>{recipients.length ? <><span className="upload-icon success"><CheckCircle2 /></span><strong>{fileName}</strong><span>{recipients.length} recipients · {invalidCount ? `${invalidCount} need attention` : 'All email addresses look good'}</span><small>Click to replace this file</small></> : <><span className="upload-icon"><UploadCloud /></span><strong>Drop your CSV here or choose a file</strong><span>CSV up to 5 MB</span></>}</button><button className="text-button" onClick={useSampleData}>Use sample recipients instead</button>{recipients.length > 0 && <div className="recipient-preview"><div><strong>Recipient preview</strong><span>{recipients.length} total rows</span></div>{recipients.slice(0, 3).map((row, index) => <div className="recipient-row" key={`${row.email}-${index}`}><span className="row-avatar">{(row.name || row.email || '?').slice(0, 1).toUpperCase()}</span><div><strong>{row.name || 'Unnamed recipient'}</strong><span>{row.email}</span></div><b className={emailPattern.test(row.email ?? '') ? 'valid' : 'invalid'}>{emailPattern.test(row.email ?? '') ? 'Valid' : 'Check email'}</b></div>)}</div>}</div>;
+  return <div className="single-step"><span className="step-kicker">STEP 2 OF 5</span><h2>Upload your recipients</h2><p>Choose a CSV with no more than {MAX_RECIPIENTS} recipients. We’ll validate email addresses before you continue.</p><button className={`upload-zone ${recipients.length ? 'loaded' : ''}`} onClick={onBrowse}>{recipients.length ? <><span className="upload-icon success"><CheckCircle2 /></span><strong>{fileName}</strong><span>{recipients.length} of {MAX_RECIPIENTS} recipients · {invalidCount ? `${invalidCount} need attention` : 'All email addresses look good'}</span><small>Click to replace this file</small></> : <><span className="upload-icon"><UploadCloud /></span><strong>Choose a CSV file</strong><span>Up to {MAX_RECIPIENTS} recipients · 5 MB maximum</span></>}</button><button className="text-button" onClick={useSampleData}>Use sample recipients instead</button>{recipients.length > 0 && <div className="recipient-preview"><div><strong>Recipient preview</strong><span>{recipients.length} total rows</span></div>{recipients.slice(0, 3).map((row, index) => <div className="recipient-row" key={`${row.email}-${index}`}><span className="row-avatar">{(row.name || row.email || '?').slice(0, 1).toUpperCase()}</span><div><strong>{row.name || 'Unnamed recipient'}</strong><span>{row.email}</span></div><b className={emailPattern.test(row.email ?? '') ? 'valid' : 'invalid'}>{emailPattern.test(row.email ?? '') ? 'Valid' : 'Check email'}</b></div>)}</div>}</div>;
 }
 
 function WriteStep({ subject, setSubject, body, setBody, columns, missing, insertVariable, previewRow }: { subject: string; setSubject: (value: string) => void; body: string; setBody: (value: string) => void; columns: string[]; missing: string[]; insertVariable: (value: string) => void; previewRow: Recipient }) {

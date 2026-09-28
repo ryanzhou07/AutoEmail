@@ -86,6 +86,14 @@ database Row Level Security policies only return records owned by that user.
 
 Interactive API documentation is available at `http://localhost:8000/docs`.
 
+## Supabase health check
+
+`GET /health` now calls a lightweight Supabase database function and returns
+HTTP 503 if the database cannot be reached. Apply the migrations before using
+it, then configure an uptime monitor or scheduler to request this endpoint at
+your desired interval. The route only runs when it is requested; it does not
+create a background scheduler inside the API process.
+
 ## Future deployment
 
 - In Vercel, select `frontend` as the Root Directory and set
