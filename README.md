@@ -1,5 +1,16 @@
 # Quick Emailer
 
+## Why This Exists
+
+Running a student organization (Rutgers TASA) or club often involves emailing hundreds of members every week about events, recaps, and updates. Doing this manually via standard email interfaces leads to:
+
+Copy-pasting errors and forgotten names.
+
+Cluttered inboxes with no unified team history.
+
+Lost institutional knowledge when leadership boards transition each year.
+
+This app solves those issues by giving your board a central dashboard to write, personalize, send, and archive bulk emails effortlessly.
 React frontend and FastAPI backend using Supabase Google authentication to send
 plain-text messages through the Gmail API.
 
