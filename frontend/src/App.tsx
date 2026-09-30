@@ -27,10 +27,14 @@ import { saveEmailCampaign } from './emailHistory';
 import type { DeliveryResult } from './emailHistory';
 import { EmailHistory } from './HistoryScreen';
 import { apiUrl, responseError } from './api';
-import { isSupabaseConfigured, supabase } from './supabase';
+import {
+  clearStoredGoogleProviderToken,
+  getStoredGoogleProviderToken,
+  isSupabaseConfigured,
+  supabase,
+} from './supabase';
 
 type View = 'dashboard' | 'emails' | 'history';
-type SendMode = 'now' | 'later';
 type Recipient = Record<string, string>;
 
 type CampaignRecord = {
@@ -309,15 +313,13 @@ function Stepper({ current, setStep }: { current: number; setStep: (step: number
   );
 }
 
-function EmailWorkspace({ demoMode, accessToken, providerToken, userId, senderEmail, onSent, onScheduled }: { demoMode: boolean; accessToken: string | null; providerToken: string | null; userId: string | null; senderEmail: string; onSent: (record: CampaignRecord) => void; onScheduled: (record: CampaignRecord) => void }) {
+function EmailWorkspace({ demoMode, accessToken, providerToken, userId, senderEmail, onSent }: { demoMode: boolean; accessToken: string | null; providerToken: string | null; userId: string | null; senderEmail: string; onSent: (record: CampaignRecord) => void }) {
   const [step, setStep] = useState(0);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [fileName, setFileName] = useState('');
   const [subject, setSubject] = useState('A quick note for {name}');
   const [body, setBody] = useState('Hi {name},\n\nI wanted to reach out with a quick update for the team at {company}.\n\nWould {time} work for a short conversation?\n\nBest,\nRyan');
   const [previewIndex, setPreviewIndex] = useState(0);
-  const [sendMode, setSendMode] = useState<SendMode>('now');
-  const [scheduledAt, setScheduledAt] = useState('');
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
@@ -396,38 +398,6 @@ function EmailWorkspace({ demoMode, accessToken, providerToken, userId, senderEm
   async function finishCampaign() {
     if (!recipients.length || recipients.length > MAX_RECIPIENTS) {
       setMessage(`A campaign must contain between 1 and ${MAX_RECIPIENTS} recipients.`);
-      return;
-    }
-
-    if (sendMode === 'later') {
-      if (!scheduledAt) { setMessage('Choose a date and time.'); return; }
-      setSending(true);
-      try {
-        const scheduledDate = new Date(scheduledAt);
-        const deliveries: DeliveryResult[] = recipients.map((recipient) => ({
-          recipient,
-          renderedSubject: renderTemplate(subject, recipient),
-          renderedBody: renderTemplate(body, recipient),
-          status: 'queued',
-        }));
-        const id = demoMode
-          ? crypto.randomUUID()
-          : await saveEmailCampaign({
-              userId: userId!,
-              senderEmail,
-              subjectTemplate: subject,
-              bodyTemplate: body,
-              status: 'scheduled',
-              scheduledAt: scheduledDate.toISOString(),
-              deliveries,
-            });
-        onScheduled({ id, subject, recipients: recipients.length, status: 'Scheduled', date: scheduledDate.toLocaleString() });
-        setMessage('Scheduled email saved to your dashboard.');
-      } catch (caught) {
-        setMessage(caught instanceof Error ? caught.message : 'The schedule could not be saved.');
-      } finally {
-        setSending(false);
-      }
       return;
     }
 
@@ -536,12 +506,12 @@ function EmailWorkspace({ demoMode, accessToken, providerToken, userId, senderEm
         {step === 1 && <UploadStep recipients={recipients} fileName={fileName} invalidCount={invalidCount} onBrowse={() => fileInput.current?.click()} useSampleData={useSampleData} />}
         {step === 2 && <WriteStep subject={subject} setSubject={setSubject} body={body} setBody={setBody} columns={columns} missing={missing} insertVariable={insertVariable} previewRow={previewRow} />}
         {step === 3 && <PreviewStep recipients={recipients} previewIndex={previewIndex} setPreviewIndex={setPreviewIndex} subject={subject} body={body} />}
-        {step === 4 && <SendStep recipients={recipients} subject={subject} sendMode={sendMode} setSendMode={setSendMode} scheduledAt={scheduledAt} setScheduledAt={setScheduledAt} demoMode={demoMode} senderEmail={senderEmail} />}
+        {step === 4 && <SendStep recipients={recipients} subject={subject} demoMode={demoMode} senderEmail={senderEmail} />}
         <input ref={fileInput} hidden type="file" accept=".csv,text/csv" onChange={loadFile} />
         {message && <div className={message.includes('Successfully') || message.includes('saved') || message.includes('complete') ? 'result-message success' : 'result-message'}>{message}</div>}
         <footer className="workspace-footer">
           <button className="secondary-button" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0}><ArrowLeft size={17} /> Back</button>
-          {step < 4 ? <button className="primary-button" onClick={nextStep}>{step === 0 ? 'Start with this template' : 'Continue'} <ArrowRight size={17} /></button> : <button className="primary-button" onClick={finishCampaign} disabled={sending}>{sending ? 'Sending…' : sendMode === 'later' ? 'Schedule email' : `Send ${recipients.length} email${recipients.length === 1 ? '' : 's'}`} <Send size={17} /></button>}
+          {step < 4 ? <button className="primary-button" onClick={nextStep}>Continue <ArrowRight size={17} /></button> : <button className="primary-button" onClick={finishCampaign} disabled={sending}>{sending ? 'Sending…' : `Send ${recipients.length} email${recipients.length === 1 ? '' : 's'}`} <Send size={17} /></button>}
         </footer>
       </div>
     </section>
@@ -565,12 +535,15 @@ function PreviewStep({ recipients, previewIndex, setPreviewIndex, subject, body 
   return <div className="preview-step"><div className="preview-toolbar"><div><span className="step-kicker">STEP 4 OF 5</span><h2>Review each message</h2><p>This is exactly what Gmail will send.</p></div><div className="preview-nav"><button onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))} disabled={previewIndex === 0}><ChevronLeft /></button><span>{previewIndex + 1} of {recipients.length}</span><button onClick={() => setPreviewIndex(Math.min(recipients.length - 1, previewIndex + 1))} disabled={previewIndex >= recipients.length - 1}><ChevronRight /></button></div></div><div className="final-preview"><div className="final-preview-top"><div className="avatar large">{(row.name || row.email).slice(0, 1).toUpperCase()}</div><div><strong>{row.name || row.email}</strong><span>{row.email}</span></div></div><div className="subject-line"><span>Subject</span><strong>{renderTemplate(subject, row)}</strong></div><div className="mail-body roomy">{renderTemplate(body, row)}</div></div><div className="validation-strip"><CheckCircle2 /><div><strong>Ready to send</strong><span>{recipients.length} valid recipients and all variables match your CSV.</span></div></div></div>;
 }
 
-function SendStep({ recipients, subject, sendMode, setSendMode, scheduledAt, setScheduledAt, demoMode, senderEmail }: { recipients: Recipient[]; subject: string; sendMode: SendMode; setSendMode: (mode: SendMode) => void; scheduledAt: string; setScheduledAt: (value: string) => void; demoMode: boolean; senderEmail: string }) {
-  return <div className="send-step"><div><span className="step-kicker">STEP 5 OF 5</span><h2>Choose when to send</h2><p>Check the summary, then send immediately or schedule for later.</p></div><div className="send-summary"><div><span>From</span><strong>{demoMode ? 'Demo Gmail account' : senderEmail}</strong></div><div><span>Recipients</span><strong>{recipients.length}</strong></div><div><span>Subject</span><strong>{subject}</strong></div></div><div className="send-mode-grid"><button className={sendMode === 'now' ? 'selected' : ''} onClick={() => setSendMode('now')}><span><Send /></span><div><strong>Send now</strong><p>Start sending after final confirmation.</p></div><i>{sendMode === 'now' && <Check />}</i></button><button className={sendMode === 'later' ? 'selected' : ''} onClick={() => setSendMode('later')}><span><CalendarClock /></span><div><strong>Schedule for later</strong><p>Choose the date and local time.</p></div><i>{sendMode === 'later' && <Check />}</i></button></div>{sendMode === 'later' && <label className="schedule-field">Send date and time<input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /></label>}<div className="send-warning"><ShieldCheck /><span>{demoMode ? 'Preview mode is active. No real messages will leave Gmail.' : 'Once Gmail accepts a message it cannot be recalled from this app.'}</span></div></div>;
+function SendStep({ recipients, subject, demoMode, senderEmail }: { recipients: Recipient[]; subject: string; demoMode: boolean; senderEmail: string }) {
+  return <div className="send-step"><div><span className="step-kicker">STEP 5 OF 5</span><h2>Ready to send</h2><p>Check the summary, then send your emails.</p></div><div className="send-summary"><div><span>From</span><strong>{demoMode ? 'Demo Gmail account' : senderEmail}</strong></div><div><span>Recipients</span><strong>{recipients.length}</strong></div><div><span>Subject</span><strong>{subject}</strong></div></div><div className="send-warning"><ShieldCheck /><span>{demoMode ? 'Preview mode is active. No real messages will leave Gmail.' : 'Once Gmail accepts a message it cannot be recalled from this app.'}</span></div></div>;
 }
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [providerToken, setProviderToken] = useState<string | null>(() =>
+    getStoredGoogleProviderToken(),
+  );
   const [checking, setChecking] = useState(Boolean(supabase));
   const [demoMode, setDemoMode] = useState(false);
   const [view, setView] = useState<View>('emails');
@@ -589,6 +562,9 @@ export default function App() {
       .getSession()
       .then(({ data }) => {
         setSession(data.session);
+        setProviderToken(
+          data.session?.provider_token || getStoredGoogleProviderToken(),
+        );
       })
       .catch(() => {
         setSession(null);
@@ -597,8 +573,13 @@ export default function App() {
         setChecking(false);
       });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+      setProviderToken(
+        event === 'SIGNED_OUT'
+          ? null
+          : nextSession?.provider_token || getStoredGoogleProviderToken(),
+      );
       setChecking(false);
     });
 
@@ -626,6 +607,8 @@ export default function App() {
 
   async function logout() {
     if (!demoMode && supabase) await supabase.auth.signOut();
+    clearStoredGoogleProviderToken();
+    setProviderToken(null);
     setSession(null);
     setDemoMode(false);
     setView('emails');
@@ -640,8 +623,6 @@ export default function App() {
   const senderEmail = demoMode
     ? 'demo@example.com'
     : session?.user.email || 'Connected Google account';
-  const providerToken = session?.provider_token || null;
-
   function openHistory(campaignId?: string) {
     setSelectedHistoryCampaignId(campaignId ?? null);
     setView('history');
@@ -654,7 +635,7 @@ export default function App() {
         {view === 'dashboard' && <Dashboard history={history} scheduled={scheduled} loading={historyLoading} error={historyError} goToEmails={() => setView('emails')} openHistory={openHistory} />}
         {view === 'history' && session?.access_token && <EmailHistory accessToken={session.access_token} initialCampaignId={selectedHistoryCampaignId} />}
         {view === 'history' && demoMode && <section className="page-content"><EmptyState icon={<Mail />} title="History is unavailable in demo mode" detail="Sign in with Google to save and retrieve recipient delivery records." /></section>}
-        {view === 'emails' && <EmailWorkspace demoMode={demoMode} accessToken={session?.access_token || null} providerToken={providerToken} userId={session?.user.id || null} senderEmail={senderEmail} onSent={(record) => setHistory((items) => [record, ...items])} onScheduled={(record) => setScheduled((items) => [record, ...items])} />}
+        {view === 'emails' && <EmailWorkspace demoMode={demoMode} accessToken={session?.access_token || null} providerToken={providerToken} userId={session?.user.id || null} senderEmail={senderEmail} onSent={(record) => setHistory((items) => [record, ...items])} />}
       </main>
     </div>
   );
