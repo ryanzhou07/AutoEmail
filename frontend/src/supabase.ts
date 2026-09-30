@@ -2,18 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 
 const googleProviderTokenKey = 'quick-emailer.google-provider-token';
 
-function captureGoogleProviderTokenFromCallback() {
-  const callbackParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  const providerToken = callbackParams.get('provider_token');
-  if (providerToken) {
-    window.localStorage.setItem(googleProviderTokenKey, providerToken);
-  }
-}
-
-// With the implicit OAuth flow, provider_token arrives in the URL fragment.
-// Capture it synchronously before the Supabase client consumes that fragment.
-captureGoogleProviderTokenFromCallback();
-
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
 const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
 
@@ -30,6 +18,7 @@ export const supabase = isSupabaseConfigured
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+        flowType: 'pkce',
       },
     })
   : null;

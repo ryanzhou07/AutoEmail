@@ -418,7 +418,7 @@ function EmailWorkspace({ demoMode, accessToken, providerToken, userId, senderEm
             headers: {
               Authorization: `Bearer ${accessToken}`,
               'Content-Type': 'application/json',
-              'X-Google-Access-Token': providerToken,
+              'X-Gmail-Provider-Token': providerToken,
             },
             body: JSON.stringify({
               to: row.email,

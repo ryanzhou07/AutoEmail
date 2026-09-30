@@ -29,7 +29,7 @@ app.add_middleware(
     allow_headers=[
         "Authorization",
         "Content-Type",
-        "X-Google-Access-Token",
+        "X-Gmail-Provider-Token",
     ],
 )
 app.include_router(gmail_auth_router)

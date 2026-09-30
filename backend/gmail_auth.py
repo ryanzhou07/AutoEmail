@@ -104,7 +104,7 @@ def get_verified_supabase_access_token(
 def get_creds(
     _: SupabaseUser = Depends(get_supabase_user),
     google_access_token: str | None = Header(
-        default=None, alias="X-Google-Access-Token"
+        default=None, alias="X-Gmail-Provider-Token"
     ),
 ) -> Credentials:
     """Build Gmail credentials from the signed-in user's Google provider token."""
@@ -123,7 +123,7 @@ def get_creds(
 def gmail_auth_status(
     user: SupabaseUser = Depends(get_supabase_user),
     google_access_token: str | None = Header(
-        default=None, alias="X-Google-Access-Token"
+        default=None, alias="X-Gmail-Provider-Token"
     ),
 ) -> GmailConnectionStatus:
     """Report whether this Supabase session also has a Google provider token."""
